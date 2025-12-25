@@ -1,10 +1,10 @@
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
 type AuditParams = {
   userId?: string;
   action: string;
-  entityType?: string;
+  entityType: string;
   entityId?: string;
   meta?: Prisma.InputJsonValue;
 };
