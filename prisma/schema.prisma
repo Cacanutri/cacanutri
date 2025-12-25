@@ -1,10 +1,11 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -13,15 +14,12 @@ enum UserRole {
   CLIENT
 }
 
-enum OrgRole {
-  OWNER
-  MEMBER
-}
-
-enum PlanCode {
-  BASIC
-  PRO
-  PREMIUM
+enum ProjectStatus {
+  ONBOARDING
+  EM_PRODUCAO
+  EM_REVISAO
+  PUBLICADO
+  MANUTENCAO
 }
 
 enum ProjectCategory {
@@ -32,12 +30,9 @@ enum ProjectCategory {
   OUTROS
 }
 
-enum ProjectStatus {
-  ONBOARDING
-  EM_PRODUCAO
-  EM_REVISAO
-  PUBLICADO
-  MANUTENCAO
+enum OrgRole {
+  OWNER
+  MEMBER
 }
 
 enum TaskStatus {
@@ -64,71 +59,84 @@ enum InvoiceStatus {
   PENDING
   PAID
   FAILED
+  CANCELED
 }
 
 model User {
-  id              String         @id @default(cuid())
-  name            String
-  email           String         @unique
-  passwordHash    String
-  role            UserRole       @default(CLIENT)
-  termsAcceptedAt DateTime?
-  organizations   Organization[] @relation("OrgOwner")
-  memberships     Membership[]
-  tasksAssigned   Task[]         @relation("TaskAssignee")
-  ticketsCreated  Ticket[]       @relation("TicketCreator")
-  ticketMessages  TicketMessage[] @relation("TicketAuthor")
-  auditLogs       AuditLog[]
-  createdAt       DateTime       @default(now())
+  id           String      @id @default(cuid())
+  name         String?
+  email        String      @unique
+  passwordHash String?
+  role         UserRole    @default(CLIENT)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  organizations Organization[] @relation("OrgOwner")
+  memberships   Membership[]
+  assignedTasks Task[]         @relation("TaskAssignee")
+  tickets       Ticket[]       @relation("TicketCreator")
+  messages      TicketMessage[]
+  audits        AuditLog[]
 }
 
 model Organization {
-  id          String        @id @default(cuid())
-  name        String
-  ownerId     String
-  owner       User          @relation("OrgOwner", fields: [ownerId], references: [id])
-  memberships Membership[]
-  projects    Project[]
-  invoices    Invoice[]
-  createdAt   DateTime      @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  members   Membership[]
+  invoices  Invoice[]
 }
 
 model Membership {
+  id             String       @id @default(cuid())
   userId         String
   organizationId String
-  roleInOrg      OrgRole     @default(MEMBER)
-  user           User        @relation(fields: [userId], references: [id])
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  @@id([userId, organizationId])
+  roleInOrg      OrgRole      @default(MEMBER)
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
 }
 
 model Plan {
-  id         String   @id @default(cuid())
-  code       PlanCode @unique
-  name       String
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
   priceCents Int
-  slaHours   Int
-  projects   Project[]
+  slaHours  Int
+  createdAt DateTime @default(now())
+
+  projects  Project[]
 }
 
 model Project {
   id             String          @id @default(cuid())
   organizationId String
-  category       ProjectCategory
   planId         String
+  category       ProjectCategory
   status         ProjectStatus   @default(ONBOARDING)
+
   title          String
+  description    String?
   address        String?
   phone          String?
   instagram      String?
-  description    String?
   previewUrl     String?
   prodUrl        String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  plan           Plan            @relation(fields: [planId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           Plan         @relation(fields: [planId], references: [id])
+
   intake         Intake?
   assets         Asset[]
   tasks          Task[]
@@ -141,7 +149,10 @@ model Intake {
   dataJson    Json
   submittedAt DateTime?
   isDraft     Boolean  @default(true)
-  project     Project  @relation(fields: [projectId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Asset {
@@ -151,7 +162,8 @@ model Asset {
   filename  String
   path      String
   createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id])
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Task {
@@ -161,23 +173,25 @@ model Task {
   status     TaskStatus @default(TODO)
   assigneeId String?
   createdAt  DateTime   @default(now())
-  project    Project    @relation(fields: [projectId], references: [id])
-  assignee   User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  updatedAt  DateTime   @updatedAt
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee   User?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 }
 
 model Ticket {
-  id            String         @id @default(cuid())
-  projectId     String
-  createdById   String
-  status        TicketStatus   @default(ABERTO)
-  priority      TicketPriority @default(MEDIA)
-  subject       String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id          String        @id @default(cuid())
+  projectId   String
+  createdById String
+  status      TicketStatus  @default(ABERTO)
+  priority    TicketPriority @default(MEDIA)
+  subject     String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  project       Project        @relation(fields: [projectId], references: [id])
-  createdBy     User           @relation("TicketCreator", fields: [createdById], references: [id])
-  messages      TicketMessage[]
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation("TicketCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  messages    TicketMessage[]
 }
 
 model TicketMessage {
@@ -186,8 +200,9 @@ model TicketMessage {
   authorId  String
   message   String
   createdAt DateTime @default(now())
-  ticket    Ticket   @relation(fields: [ticketId], references: [id])
-  author    User     @relation("TicketAuthor", fields: [authorId], references: [id])
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model Invoice {
@@ -195,19 +210,24 @@ model Invoice {
   organizationId String
   amountCents    Int
   status         InvoiceStatus @default(PENDING)
-  provider       String
-  reference      String
+  provider       String        @default("MOCK")
+  reference      String?
   createdAt      DateTime      @default(now())
-  organization   Organization  @relation(fields: [organizationId], references: [id])
+  updatedAt      DateTime      @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
   action     String
-  entityType String
+  entityType String?
   entityId   String?
   metaJson   Json?
   createdAt  DateTime @default(now())
-  user       User?    @relation(fields: [userId], references: [id])
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
 }
