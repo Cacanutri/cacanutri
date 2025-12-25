@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: siteops_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: siteops
+      POSTGRES_PASSWORD: siteops
+      POSTGRES_DB: siteops
+    volumes:
+      - siteops_db:/var/lib/postgresql/data
+volumes:
+  siteops_db:
