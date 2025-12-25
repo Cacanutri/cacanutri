@@ -1,19 +1,21 @@
-import { prisma } from "./prisma";
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function logAudit(params: {
   userId?: string;
   action: string;
-  entityType: string;
+  entityType?: string;
   entityId?: string;
-  meta?: Record<string, unknown>;
+  meta?: Prisma.InputJsonValue;
 }) {
-  await prisma.auditLog.create({
+  return prisma.auditLog.create({
     data: {
       userId: params.userId,
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId,
-      metaJson: params.meta
+      metaJson: params.meta ?? Prisma.JsonNull
     }
   });
 }
+
